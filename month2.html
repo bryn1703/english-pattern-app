@@ -8,7 +8,8 @@
     content="width=device-width, initial-scale=1.0"
   >
 
-  <title>우리 집 영어 패턴</title>
+ <title>우리 집 영어 패턴 - 2개월차</title>
+
 
   <style>
     * {
@@ -81,6 +82,51 @@
       background-color: #2563eb;
       color: white;
     }
+/*
+  일차 버튼 아래쪽의 상태 표시
+*/
+.day-state {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/*
+  완료한 학습
+*/
+.day-button.completed {
+  border-color: #22c55e;
+  background-color: #f0fdf4;
+  color: #166534;
+}
+
+/*
+  현재 학습할 일차
+*/
+.day-button.current {
+  border-color: #f59e0b;
+  background-color: #fffbeb;
+  color: #92400e;
+}
+
+/*
+  아직 열리지 않은 학습
+*/
+.day-button.locked {
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/*
+  현재 화면에서 선택된 일차
+*/
+.day-button.selected {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
 
     /*
       학습 내용
@@ -398,6 +444,50 @@
   background-color: white;
   color: #1e40af;
 }
+/*
+  학습 완료 영역
+*/
+.completion-panel {
+  margin-top: 24px;
+  padding: 20px;
+  border: 2px solid #bbf7d0;
+  border-radius: 14px;
+  background-color: #f0fdf4;
+}
+
+.complete-lesson-button {
+  width: 100%;
+  min-height: 60px;
+  padding: 14px 18px;
+  border: 2px solid #16a34a;
+  border-radius: 12px;
+  background-color: #16a34a;
+  color: white;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.complete-lesson-button:hover:not(:disabled) {
+  border-color: #15803d;
+  background-color: #15803d;
+}
+
+.complete-lesson-button:disabled {
+  border-color: #86efac;
+  background-color: #dcfce7;
+  color: #166534;
+  cursor: default;
+}
+
+.completion-message {
+  margin: 12px 0 0;
+  color: #166534;
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1.6;
+  text-align: center;
+}
 
     /*
       이전 및 다음 학습
@@ -480,7 +570,10 @@
 <body>
   <main class="app">
     <header class="app-header">
-      <h1 class="app-title">우리 집 영어 패턴 · 2개월차</h1>
+      <h1 class="app-title">
+  우리 집 영어 패턴 · 2개월차
+</h1>
+
 
       <p class="app-description">
         I want 패턴을 30일 동안 확장하고 변형하며 학습합니다.
@@ -607,9 +700,26 @@
           class="quiz-feedback"
           aria-live="polite"
         ></p>
+            </section>
+
+      <section class="completion-panel">
+        <button
+          id="complete-lesson-button"
+          class="complete-lesson-button"
+          type="button"
+        >
+          학습 완료하기
+        </button>
+
+        <p
+          id="completion-message"
+          class="completion-message"
+          aria-live="polite"
+        ></p>
       </section>
 
       <div class="navigation">
+
         <button
           id="previous-button"
           class="navigation-button"
@@ -653,7 +763,7 @@ function sentence(
     /*
       30일 학습 자료입니다.
     */
-   const lessons = [
+    const lessons = [
   {
     day: 1,
     title: "원하는 음식과 음료 말하기",
@@ -1553,12 +1663,169 @@ function sentence(
 ];
 
 
-
     /*
       현재 선택 상태
     */
-    let currentLessonIndex = 0;
-    let currentSentenceIndex = 0;
+
+/*
+  과정마다 완료 기록을 따로 저장합니다.
+
+  index.html은 month1,
+  month2.html은 month2를 사용합니다.
+*/
+const COURSE_ID = "month2";
+
+/*
+  localStorage에 사용할 저장 이름입니다.
+*/
+const COMPLETED_DAYS_KEY =
+  `english-pattern-${COURSE_ID}-completed-days`;
+
+/*
+  저장된 완료 일차를 불러옵니다.
+*/
+function loadCompletedDays() {
+  const savedText =
+    localStorage.getItem(COMPLETED_DAYS_KEY);
+
+  if (!savedText) {
+    return [];
+  }
+
+  try {
+    const savedDays = JSON.parse(savedText);
+
+    if (!Array.isArray(savedDays)) {
+      return [];
+    }
+
+    /*
+      올바른 일차만 남기고
+      중복된 일차를 제거합니다.
+    */
+    const validDays = savedDays.filter(
+      function (day) {
+        return (
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= lessons.length
+        );
+      }
+    );
+
+    return [...new Set(validDays)].sort(
+      function (firstDay, secondDay) {
+        return firstDay - secondDay;
+      }
+    );
+  } catch (error) {
+    console.error(
+      "완료 기록을 불러오지 못했습니다.",
+      error
+    );
+
+    return [];
+  }
+}
+
+/*
+  완료 기록을 브라우저에 저장합니다.
+*/
+function saveCompletedDays() {
+  localStorage.setItem(
+    COMPLETED_DAYS_KEY,
+    JSON.stringify(completedDays)
+  );
+}
+
+/*
+  해당 일차가 완료되었는지 확인합니다.
+*/
+function isLessonCompleted(day) {
+  return completedDays.includes(day);
+}
+
+/*
+  첫 번째 미완료 일차의 배열 번호를 찾습니다.
+
+  모두 완료한 경우에는 -1을 반환합니다.
+*/
+function getNextIncompleteLessonIndex() {
+  return lessons.findIndex(
+    function (lesson) {
+      return !isLessonCompleted(lesson.day);
+    }
+  );
+}
+
+/*
+  해당 일차에 들어갈 수 있는지 확인합니다.
+
+  완료한 일차와 현재 학습해야 할
+  첫 번째 미완료 일차만 열립니다.
+*/
+function isLessonUnlocked(lessonIndex) {
+  if (
+    lessonIndex < 0 ||
+    lessonIndex >= lessons.length
+  ) {
+    return false;
+  }
+
+  const lesson = lessons[lessonIndex];
+
+  if (isLessonCompleted(lesson.day)) {
+    return true;
+  }
+
+  const nextIncompleteIndex =
+    getNextIncompleteLessonIndex();
+
+  /*
+    모든 수업을 완료했다면
+    전체 일차에 들어갈 수 있습니다.
+  */
+  if (nextIncompleteIndex === -1) {
+    return true;
+  }
+
+  return lessonIndex === nextIncompleteIndex;
+}
+
+/*
+  페이지를 열었을 때 표시할 일차를 찾습니다.
+
+  첫 번째 미완료 일차를 표시하고,
+  모두 완료했다면 30일차를 표시합니다.
+*/
+function getStartingLessonIndex() {
+  const nextIncompleteIndex =
+    getNextIncompleteLessonIndex();
+
+  if (nextIncompleteIndex === -1) {
+    return lessons.length - 1;
+  }
+
+  return nextIncompleteIndex;
+}
+
+/*
+  현재 선택 상태
+*/
+
+    /*
+  저장된 완료 기록입니다.
+*/
+let completedDays =
+  loadCompletedDays();
+
+/*
+  첫 번째 미완료 일차에서 시작합니다.
+*/
+let currentLessonIndex =
+  getStartingLessonIndex();
+
+let currentSentenceIndex = 0;
 
     /*
       퀴즈 상태
@@ -1624,6 +1891,15 @@ const toggleAnswerButton =
 
     const quizFeedback =
       document.querySelector("#quiz-feedback");
+const completeLessonButton =
+  document.querySelector(
+    "#complete-lesson-button"
+  );
+
+const completionMessage =
+  document.querySelector(
+    "#completion-message"
+  );
 
     const previousButton =
       document.querySelector("#previous-button");
@@ -1650,27 +1926,193 @@ const toggleAnswerButton =
     /*
       일차 선택 버튼 만들기
     */
-    function createDayMenu() {
-      dayMenu.innerHTML = "";
+    /*
+  일차 선택 버튼을 만듭니다.
+*/
+/*
+  일차 선택 버튼을 만듭니다.
+*/
+function createDayMenu() {
+  dayMenu.innerHTML = "";
 
-      lessons.forEach(function (lesson, lessonIndex) {
-        const button = document.createElement("button");
+  const nextIncompleteIndex =
+    getNextIncompleteLessonIndex();
 
-        button.type = "button";
-        button.className = "day-button";
-        button.textContent = `${lesson.day}일차`;
+  lessons.forEach(function (
+    lesson,
+    lessonIndex
+  ) {
+    const button =
+      document.createElement("button");
 
-        if (lessonIndex === currentLessonIndex) {
-          button.classList.add("selected");
-        }
+    button.type = "button";
+    button.className = "day-button";
 
-        button.addEventListener("click", function () {
-          selectLesson(lessonIndex);
-        });
+    const dayText =
+      document.createElement("span");
 
-        dayMenu.appendChild(button);
-      });
+    dayText.textContent =
+      `${lesson.day}일차`;
+
+    const stateText =
+      document.createElement("span");
+
+    stateText.className = "day-state";
+
+    const completed =
+      isLessonCompleted(lesson.day);
+
+    const unlocked =
+      isLessonUnlocked(lessonIndex);
+
+    if (completed) {
+      button.classList.add("completed");
+      stateText.textContent = "완료";
+    } else if (
+      lessonIndex === nextIncompleteIndex
+    ) {
+      button.classList.add("current");
+      stateText.textContent = "학습 중";
+    } else {
+      button.classList.add("locked");
+      stateText.textContent = "잠김";
     }
+
+    if (lessonIndex === currentLessonIndex) {
+      button.classList.add("selected");
+    }
+
+    button.appendChild(dayText);
+    button.appendChild(stateText);
+
+    /*
+      잠긴 일차는 선택할 수 없습니다.
+    */
+    if (!unlocked) {
+      button.disabled = true;
+    } else {
+      button.addEventListener(
+        "click",
+        function () {
+          selectLesson(lessonIndex);
+        }
+      );
+    }
+
+    dayMenu.appendChild(button);
+  });
+}
+
+/*
+  학습 완료 영역의 내용을 갱신합니다.
+*/
+function updateCompletionArea() {
+  const lesson = getCurrentLesson();
+
+  const completed =
+    isLessonCompleted(lesson.day);
+
+  if (completed) {
+    completeLessonButton.disabled = true;
+
+    completeLessonButton.textContent =
+      `${lesson.day}일차 학습 완료됨`;
+
+    completionMessage.textContent =
+      "완료 기록이 저장되어 있습니다. 이 학습을 다시 보고 퀴즈를 풀어도 완료 상태는 유지됩니다.";
+  } else {
+    completeLessonButton.disabled = false;
+
+    completeLessonButton.textContent =
+      `${lesson.day}일차 학습 완료하기`;
+
+    completionMessage.textContent =
+      "문장 학습과 퀴즈를 마친 후 이 버튼을 눌러 주세요.";
+  }
+}
+
+/*
+  이전 및 다음 버튼의 사용 가능 여부를 갱신합니다.
+*/
+function updateNavigationButtons() {
+  previousButton.disabled =
+    currentLessonIndex === 0;
+
+  const nextLessonIndex =
+    currentLessonIndex + 1;
+
+  const isLastLesson =
+    nextLessonIndex >= lessons.length;
+
+  if (isLastLesson) {
+    nextButton.disabled = true;
+  } else {
+    nextButton.disabled =
+      !isLessonUnlocked(nextLessonIndex);
+  }
+}
+
+/*
+  현재 일차를 학습 완료로 저장합니다.
+*/
+function completeCurrentLesson() {
+  const lesson = getCurrentLesson();
+
+  /*
+    이미 완료된 일차이면 다시 저장하지 않습니다.
+  */
+  if (isLessonCompleted(lesson.day)) {
+    status.textContent =
+      `${lesson.day}일차는 이미 완료한 학습입니다.`;
+
+    return;
+  }
+
+  completedDays.push(lesson.day);
+
+  /*
+    중복 값을 제거하고 일차순으로 정렬합니다.
+  */
+  completedDays = [
+    ...new Set(completedDays)
+  ].sort(function (firstDay, secondDay) {
+    return firstDay - secondDay;
+  });
+
+  saveCompletedDays();
+
+  /*
+    완료 표시와 버튼 상태를 다시 그립니다.
+  */
+  createDayMenu();
+  updateCompletionArea();
+  updateNavigationButtons();
+
+  const nextIncompleteIndex =
+    getNextIncompleteLessonIndex();
+
+  /*
+    모든 학습을 완료한 경우입니다.
+  */
+  if (nextIncompleteIndex === -1) {
+    status.textContent =
+      "축하합니다. 30일 학습을 모두 완료했습니다.";
+
+    completionMessage.textContent =
+      "30일 학습을 모두 완료했습니다. 모든 일차에 다시 들어가 복습할 수 있습니다.";
+
+    return;
+  }
+
+  const nextLesson =
+    lessons[nextIncompleteIndex];
+
+  status.textContent =
+    `${lesson.day}일차가 완료되었습니다. ${nextLesson.day}일차 학습이 열렸습니다.`;
+
+  completionMessage.textContent =
+    `완료 기록이 저장되었습니다. 다음은 ${nextLesson.day}일차 학습입니다.`;
+}
 
     /*
       문장 선택 버튼 만들기
@@ -1821,22 +2263,60 @@ function createAutomaticDistractors(
   want, wants, wanted 비교
 */
 if (words.includes("want")) {
-  distractors.push("wants", "wanted");
+  distractors.push(
+    "wants",
+    "wanted"
+  );
 }
 
 if (words.includes("wants")) {
-  distractors.push("want", "wanted");
+  distractors.push(
+    "want",
+    "wanted"
+  );
 }
 
 if (words.includes("wanted")) {
-  distractors.push("want", "wants");
+  distractors.push(
+    "want",
+    "wants"
+  );
 }
 
 /*
-  would와 do, does, did 비교
+  to 뒤의 동사 형태 비교
+*/
+if (words.includes("read")) {
+  distractors.push(
+    "reads",
+    "reading"
+  );
+}
+
+if (words.includes("play")) {
+  distractors.push(
+    "plays",
+    "playing"
+  );
+}
+
+if (words.includes("go")) {
+  distractors.push(
+    "goes",
+    "going",
+    "went"
+  );
+}
+
+/*
+  would와 일반 질문 표현 비교
 */
 if (words.includes("would")) {
-  distractors.push("Do", "Does", "Did");
+  distractors.push(
+    "Do",
+    "Does",
+    "Did"
+  );
 }
 
   /*
@@ -2160,7 +2640,7 @@ function checkQuizAnswer() {
     speakCurrentSentence();
   } else {
     quizFeedback.textContent =
-      "아직 문장이 정확하지 않아요. 주어, do·does·did와 like의 형태를 다시 살펴보세요.";
+      "아직 문장이 정확하지 않아요. 주어, do·does·did와 want의 형태를 다시 살펴보세요.";
 
     quizFeedback.className =
       "quiz-feedback incorrect";
@@ -2227,12 +2707,8 @@ function toggleAnswerVisibility() {
       mainMeaning.textContent =
         currentSentence.korean;
 
-      previousButton.disabled =
-        currentLessonIndex === 0;
+      
 
-      nextButton.disabled =
-        currentLessonIndex ===
-        lessons.length - 1;
 
       /*
   28일부터 30일까지는 복습일이므로
@@ -2240,29 +2716,50 @@ function toggleAnswerVisibility() {
 */
 answerHidden = lesson.day >= 28;
 
+updateNavigationButtons();
 createDayMenu();
 createSentenceButtons();
 createQuiz();
 updateAnswerVisibility();
+updateCompletionArea();
+
 
     }
 
     /*
       다른 일차 선택
     */
-    function selectLesson(lessonIndex) {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+    /*
+  다른 일차를 선택합니다.
+*/
+function selectLesson(lessonIndex) {
+  if (!isLessonUnlocked(lessonIndex)) {
+    status.textContent =
+      "이 학습은 아직 열리지 않았습니다.";
 
-      currentLessonIndex = lessonIndex;
-      currentSentenceIndex = 0;
+    return;
+  }
 
-      status.textContent =
-        `${lessons[lessonIndex].day}일차 학습을 선택했어요.`;
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
 
-      updateLessonScreen();
-    }
+  currentLessonIndex = lessonIndex;
+  currentSentenceIndex = 0;
+
+  const lesson = getCurrentLesson();
+
+  if (isLessonCompleted(lesson.day)) {
+    status.textContent =
+      `${lesson.day}일차는 완료한 학습입니다. 자유롭게 복습할 수 있습니다.`;
+  } else {
+    status.textContent =
+      `${lesson.day}일차 학습을 시작합니다.`;
+  }
+
+  updateLessonScreen();
+}
+
 
     /*
       다른 문장 선택
@@ -2347,23 +2844,37 @@ updateAnswerVisibility();
     /*
       다음 학습
     */
-    function goToNextLesson() {
-      if (
-        currentLessonIndex <
-        lessons.length - 1
-      ) {
-        selectLesson(currentLessonIndex + 1);
+    /*
+  다음 학습으로 이동합니다.
+*/
+function goToNextLesson() {
+  const nextLessonIndex =
+    currentLessonIndex + 1;
 
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth"
-        });
-      }
-    }
+  if (nextLessonIndex >= lessons.length) {
+    return;
+  }
+
+  if (!isLessonUnlocked(nextLessonIndex)) {
+    status.textContent =
+      "현재 일차를 완료하면 다음 학습이 열립니다.";
+
+    return;
+  }
+
+  selectLesson(nextLessonIndex);
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+}
+
 
     /*
       버튼과 기능 연결
     */
+   
     listenButton.addEventListener(
       "click",
       speakCurrentSentence
@@ -2382,6 +2893,10 @@ toggleAnswerButton.addEventListener(
       "click",
       checkQuizAnswer
     );
+completeLessonButton.addEventListener(
+  "click",
+  completeCurrentLesson
+);
 
     previousButton.addEventListener(
       "click",
@@ -2396,7 +2911,22 @@ toggleAnswerButton.addEventListener(
     /*
       처음 화면 표시
     */
-    updateLessonScreen();
+   /*
+  저장된 진행 상태에 맞는 학습을 표시합니다.
+*/
+updateLessonScreen();
+
+const nextIncompleteIndex =
+  getNextIncompleteLessonIndex();
+
+if (nextIncompleteIndex === -1) {
+  status.textContent =
+    "30일 학습을 모두 완료했습니다. 원하는 일차를 선택해 복습하세요.";
+} else {
+  status.textContent =
+    `${lessons[currentLessonIndex].day}일차 학습을 이어서 진행합니다.`;
+}
+
   </script>
 </body>
 </html>
