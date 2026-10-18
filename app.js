@@ -1,579 +1,552 @@
-(() => {
-  "use strict";
+// === V4 State Management & Data ===
+const PROGRESS_KEY = `english-pattern-${COURSE_ID}-progress-v4`;
+const STARS_KEY = `english-pattern-total-stars`;
 
-  const data = window.COURSE_DATA;
-  if (!data || !Array.isArray(data.lessons)) {
-    document.body.textContent = "학습 자료를 불러오지 못했습니다.";
+let progress = loadProgress();
+let userStars = parseInt(localStorage.getItem(STARS_KEY) || '0');
+
+let currentLessonIndex = 0;
+let currentSentenceIndex = 0;
+
+// Review State
+let isReviewMode = false;
+let reviewSentences = [];
+let currentReviewIndex = 0;
+
+// Quiz State
+let shuffledBlocks = [];
+let selectedBlockIds = [];
+let answerHidden = false;
+
+// DOM Elements
+const starCountEl = document.getElementById('star-count');
+const dayMenu = document.getElementById('day-menu');
+const lessonCard = document.getElementById('lesson-card');
+const reviewCard = document.getElementById('review-card');
+const diffCard = document.getElementById('difficulty-card');
+
+const dayLabel = document.getElementById('day-label');
+const diffBadge = document.getElementById('diff-badge');
+const lessonTitle = document.getElementById('lesson-title');
+const lessonFocus = document.getElementById('lesson-focus');
+const lessonGuide = document.getElementById('lesson-guide');
+const mainSentence = document.getElementById('main-sentence');
+const mainMeaning = document.getElementById('main-meaning');
+const sentenceChoices = document.getElementById('sentence-choices');
+
+const listenBtn = document.getElementById('listen-button');
+const statusEl = document.getElementById('status');
+const quizKoreanPrompt = document.getElementById('quiz-korean-prompt');
+const answerZone = document.getElementById('answer-zone');
+const wordBank = document.getElementById('word-bank');
+const toggleAnswerBtn = document.getElementById('toggle-answer-button');
+const resetQuizBtn = document.getElementById('reset-quiz-button');
+const checkAnswerBtn = document.getElementById('check-answer-button');
+const quizFeedback = document.getElementById('quiz-feedback');
+
+const completionReqs = document.getElementById('completion-reqs');
+const completeLessonBtn = document.getElementById('complete-lesson-button');
+const completionMessage = document.getElementById('completion-message');
+const prevBtn = document.getElementById('previous-button');
+const nextBtn = document.getElementById('next-button');
+
+// Gamification: Stars
+function addStars(amount) {
+  userStars += amount;
+  localStorage.setItem(STARS_KEY, userStars);
+  starCountEl.textContent = userStars;
+
+  // Animate the star icon
+  const icon = document.querySelector('.star-icon');
+  icon.style.animation = 'none';
+  setTimeout(() => icon.style.animation = 'popIn 0.5s ease', 10);
+}
+
+// Confetti Effect
+function showConfetti() {
+  const container = document.getElementById('confetti-container');
+  const colors = ['#FF7B89', '#3B82F6', '#34D399', '#FBBF24', '#A78BFA'];
+  for(let i=0; i<50; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + 'vw';
+    piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (Math.random() * 2 + 2) + 's';
+    piece.style.animationDelay = (Math.random() * 0.5) + 's';
+    container.appendChild(piece);
+    setTimeout(() => piece.remove(), 5000);
+  }
+}
+
+// Data Management
+function loadProgress() {
+  const defaultProgress = {
+    completedDays: [],
+    lessons: {}, // e.g., { 1: { listened: [...], solved: [...] } }
+    difficulty: { days4to7: null, days8to30: null }
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY));
+    if (saved && Array.isArray(saved.completedDays)) {
+      return saved;
+    }
+    // Migration from v3 if exists
+    const v3 = JSON.parse(localStorage.getItem(`english-pattern-${COURSE_ID}-progress-v3`));
+    if(v3 && Array.isArray(v3.completedDays)) return v3;
+  } catch(e) {}
+  return defaultProgress;
+}
+
+function saveProgress() {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+}
+
+function getLessonRecord(day) {
+  if (!progress.lessons[day]) {
+    progress.lessons[day] = { listened: [], solved: [] };
+  }
+  return progress.lessons[day];
+}
+
+// Navigation Logic
+function getStartingLessonIndex() {
+  for(let i=0; i<30; i++) {
+    if(!progress.completedDays.includes(i+1)) return i;
+  }
+  return 29;
+}
+
+function initApp() {
+  starCountEl.textContent = userStars;
+  currentLessonIndex = getStartingLessonIndex();
+  startLessonFlow();
+}
+
+function startLessonFlow() {
+  const day = currentLessonIndex + 1;
+  const isCompleted = progress.completedDays.includes(day);
+
+  // 1. Difficulty Check
+  if (!isCompleted && day === 4 && !progress.difficulty.days4to7) {
+    showDifficultySelection(4);
+    return;
+  }
+  if (!isCompleted && day === 8 && !progress.difficulty.days8to30) {
+    showDifficultySelection(8);
     return;
   }
 
-  const STORAGE_KEY = `english-pattern-${data.courseId}-progress-v3`;
-  const LEGACY_KEY = `english-pattern-${data.courseId}-completed-days`;
-  const TOTAL = data.lessons.length;
+  // 2. Review Check
+  if (!isCompleted && day > 1) {
+    const prevDay = day - 1;
+    const prevData = getLessonData(prevDay);
+    if (prevData && prevData.sentences.length > 0) {
+      startReviewMode(prevData.sentences);
+      return;
+    }
+  }
 
-  const $ = (selector) => document.querySelector(selector);
-  const elements = {
-    dayMenu: $("#day-menu"), lessonView: $("#lesson-view"), dayLabel: $("#day-label"),
-    lessonTitle: $("#lesson-title"), lessonFocus: $("#lesson-focus"), lessonGuide: $("#lesson-guide"),
-    reviewPanel: $("#review-panel"), reviewCount: $("#review-count"), reviewKorean: $("#review-korean"),
-    reviewEnglish: $("#review-english"), reviewRevealButton: $("#review-reveal-button"), reviewNextButton: $("#review-next-button"),
-    lessonBody: $("#lesson-body"), listenProgress: $("#listen-progress"), quizProgress: $("#quiz-progress"),
-    mainSentence: $("#main-sentence"), mainMeaning: $("#main-meaning"), sentenceChoices: $("#sentence-choices"),
-    listenButton: $("#listen-button"), status: $("#status"), quizKoreanPrompt: $("#quiz-korean-prompt"),
-    answerZone: $("#answer-zone"), wordBank: $("#word-bank"), toggleAnswerButton: $("#toggle-answer-button"),
-    resetQuizButton: $("#reset-quiz-button"), checkAnswerButton: $("#check-answer-button"), quizFeedback: $("#quiz-feedback"),
-    completeButton: $("#complete-lesson-button"), completionMessage: $("#completion-message"),
-    previousButton: $("#previous-button"), nextButton: $("#next-button"), difficultyModal: $("#difficulty-modal"),
-    difficultyTitle: $("#difficulty-title"), difficultyCopy: $("#difficulty-copy"), basicExample: $("#basic-example"),
-    advancedExample: $("#advanced-example"), difficultyBasicButton: $("#difficulty-basic-button"),
-    difficultyAdvancedButton: $("#difficulty-advanced-button")
+  // 3. Normal Lesson
+  showMainLesson();
+}
+
+function getLessonData(day) {
+  let diff = "basic";
+  if (day >= 4 && day <= 7 && progress.difficulty.days4to7 === "advanced") diff = "advanced";
+  if (day >= 8 && progress.difficulty.days8to30 === "advanced") diff = "advanced";
+  return lessonData[diff].find(l => l.day === day);
+}
+
+// === Difficulty Selection ===
+function showDifficultySelection(startDay) {
+  lessonCard.style.display = 'none';
+  reviewCard.style.display = 'none';
+  diffCard.style.display = 'block';
+  dayMenu.innerHTML = ''; // Clear menu during selection
+
+  const titleEl = document.getElementById('diff-title');
+  const descEl = document.getElementById('diff-desc');
+  const basicBtn = document.getElementById('btn-diff-basic');
+  const advBtn = document.getElementById('btn-diff-advanced');
+
+  if(startDay === 4) {
+    titleEl.textContent = "4일차부터 더 복잡한 문장을 배워 볼까요?";
+    descEl.innerHTML = "<b>기본:</b> I want to read this book.<br><b>심화:</b> When did she decide that she wanted to read this book?";
+    basicBtn.textContent = "아니요, 현재 난이도 유지";
+    advBtn.textContent = "네, 심화 난이도로 학습 🔥";
+  } else {
+    const prevDiff = progress.difficulty.days4to7;
+    if(prevDiff === 'advanced') {
+      titleEl.textContent = "8일차부터 현재 심화 난이도를 계속할까요?";
+      descEl.textContent = "계속해서 복잡한 시제와 긴 문장을 학습합니다.";
+      basicBtn.textContent = "기본 난이도로 변경";
+      advBtn.textContent = "네, 심화 난이도 유지 🔥";
+    } else {
+      titleEl.textContent = "8일차부터 더 복잡한 문장을 학습할까요?";
+      descEl.textContent = "시제 변형(과거형)과 긴 문장이 추가됩니다.";
+      basicBtn.textContent = "아니요, 현재 난이도 유지";
+      advBtn.textContent = "네, 심화 난이도로 변경 🔥";
+    }
+  }
+
+  basicBtn.onclick = () => setDifficulty(startDay, 'basic');
+  advBtn.onclick = () => setDifficulty(startDay, 'advanced');
+}
+
+function setDifficulty(startDay, level) {
+  if(startDay === 4) progress.difficulty.days4to7 = level;
+  if(startDay === 8) progress.difficulty.days8to30 = level;
+  saveProgress();
+  diffCard.style.display = 'none';
+  startLessonFlow();
+}
+
+// === Review Mode ===
+function startReviewMode(sentences) {
+  isReviewMode = true;
+  reviewSentences = sentences;
+  currentReviewIndex = 0;
+
+  lessonCard.style.display = 'none';
+  diffCard.style.display = 'none';
+  reviewCard.style.display = 'block';
+
+  createDayMenu();
+  renderReviewCard();
+}
+
+function renderReviewCard() {
+  if(currentReviewIndex >= reviewSentences.length) {
+    // Review Done
+    isReviewMode = false;
+    reviewCard.style.display = 'none';
+    showMainLesson();
+    return;
+  }
+
+  const sen = reviewSentences[currentReviewIndex];
+  document.getElementById('review-progress-text').textContent = `${currentReviewIndex + 1} / ${reviewSentences.length}`;
+  document.getElementById('review-korean').textContent = sen.korean;
+  document.getElementById('review-english').textContent = sen.english;
+
+  const engContainer = document.getElementById('review-english-container');
+  const toggleBtn = document.getElementById('toggle-review-english-btn');
+  engContainer.classList.add('hidden');
+  toggleBtn.textContent = "영어 정답 보기";
+
+  toggleBtn.onclick = () => {
+    if(engContainer.classList.contains('hidden')) {
+      engContainer.classList.remove('hidden');
+      toggleBtn.textContent = "영어 다시 가리기";
+    } else {
+      engContainer.classList.add('hidden');
+      toggleBtn.textContent = "영어 정답 보기";
+    }
   };
 
-  function defaultState() {
-    return { completedDays: [], lessonProgress: {}, reviewDoneDays: [], difficulty: { stage1: null, stage2: null } };
-  }
+  document.getElementById('next-review-btn').onclick = () => {
+    addStars(1); // Give a star for review!
+    currentReviewIndex++;
+    renderReviewCard();
+  };
+}
 
-  function loadState() {
-    const fallback = defaultState();
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (saved && typeof saved === "object") {
-        return {
-          completedDays: Array.isArray(saved.completedDays) ? saved.completedDays : [],
-          lessonProgress: saved.lessonProgress && typeof saved.lessonProgress === "object" ? saved.lessonProgress : {},
-          reviewDoneDays: Array.isArray(saved.reviewDoneDays) ? saved.reviewDoneDays : [],
-          difficulty: saved.difficulty && typeof saved.difficulty === "object"
-            ? { stage1: saved.difficulty.stage1 || null, stage2: saved.difficulty.stage2 || null }
-            : { stage1: null, stage2: null }
-        };
-      }
-    } catch (error) {
-      console.warn("새 진행 기록을 읽지 못했습니다.", error);
+// === Main Lesson Flow ===
+function showMainLesson() {
+  lessonCard.style.display = 'block';
+  currentSentenceIndex = 0;
+  updateLessonScreen();
+  lessonCard.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateLessonScreen() {
+  const data = getLessonData(currentLessonIndex + 1);
+  const currentSentence = data.sentences[currentSentenceIndex];
+  const record = getLessonRecord(data.day);
+
+  // Headers
+  dayLabel.textContent = `${data.day}일차 / 30일`;
+  lessonTitle.textContent = data.title;
+  lessonFocus.textContent = data.focus;
+  lessonGuide.textContent = data.guide;
+
+  // Difficulty Badge
+  const isAdv = (data.day >= 4 && data.day <=7 && progress.difficulty.days4to7 === 'advanced') || 
+                (data.day >= 8 && progress.difficulty.days8to30 === 'advanced');
+  diffBadge.style.display = isAdv ? 'inline-block' : 'none';
+
+  mainSentence.textContent = currentSentence.english;
+  mainMeaning.textContent = currentSentence.korean;
+
+  // Progress Bar
+  const totalCompleted = record.listened.length + record.solved.length;
+  const maxTotal = data.sentences.length * 2;
+  const pct = (totalCompleted / maxTotal) * 100;
+  document.getElementById('daily-progress-bar').style.width = pct + '%';
+  document.getElementById('daily-progress-text').textContent = `진행도: ${totalCompleted} / ${maxTotal}`;
+
+  answerHidden = data.day >= 28;
+
+  createDayMenu();
+  createSentenceButtons(data, record);
+  createQuiz(currentSentence);
+  updateAnswerVisibility();
+  updateCompletionArea(data, record);
+  updateNavigationButtons();
+}
+
+function createDayMenu() {
+  dayMenu.innerHTML = "";
+  for(let i=1; i<=30; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'day-button';
+    const completed = progress.completedDays.includes(i);
+    const unlocked = completed || (i === getStartingLessonIndex() + 1);
+
+    let stateText = "잠김";
+    if(completed) { btn.classList.add('completed'); stateText = "완료"; }
+    else if(unlocked) { btn.classList.add('current'); stateText = "학습 중"; }
+    else { btn.classList.add('locked'); }
+
+    if(i - 1 === currentLessonIndex && !isReviewMode && diffCard.style.display === 'none') {
+      btn.classList.add('selected');
     }
-    try {
-      const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || "[]");
-      if (Array.isArray(legacy)) {
-        fallback.completedDays = legacy.filter((day) => Number.isInteger(day) && day >= 1 && day <= TOTAL);
-      }
-    } catch (error) {
-      console.warn("이전 완료 기록을 읽지 못했습니다.", error);
+
+    btn.innerHTML = `<span>${i}일차</span><span class="day-state">${stateText}</span>`;
+    if(unlocked) btn.onclick = () => { currentLessonIndex = i-1; startLessonFlow(); };
+    dayMenu.appendChild(btn);
+  }
+}
+
+function createSentenceButtons(data, record) {
+  sentenceChoices.innerHTML = "";
+  data.sentences.forEach((sen, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'sentence-button';
+    if(idx === currentSentenceIndex) btn.classList.add('selected');
+
+    const listened = record.listened.includes(idx);
+    const solved = record.solved.includes(idx);
+    if(listened && solved) btn.classList.add('completed-choice');
+
+    let stText = [];
+    if(listened) stText.push("🔊 듣기 완료");
+    if(solved) stText.push("🧩 퀴즈 완료");
+
+    btn.innerHTML = `
+      <span class="choice-english">${sen.english}</span>
+      <span class="choice-korean">${sen.korean}</span>
+      <span class="choice-status">${stText.length > 0 ? stText.join(' | ') : '미완료'}</span>
+    `;
+    btn.onclick = () => { currentSentenceIndex = idx; updateLessonScreen(); };
+    sentenceChoices.appendChild(btn);
+  });
+}
+
+// === Audio ===
+listenBtn.onclick = () => {
+  const data = getLessonData(currentLessonIndex + 1);
+  const sen = data.sentences[currentSentenceIndex];
+  const record = getLessonRecord(data.day);
+
+  if(!("speechSynthesis" in window)) {
+    statusEl.textContent = "브라우저에서 음성 지원이 안 됩니다.";
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(sen.english);
+  u.lang = "en-US";
+  u.rate = 0.75;
+  u.onstart = () => statusEl.textContent = "🔊 재생 중...";
+  u.onend = () => {
+    statusEl.textContent = "✔️ 듣기 완료! 따라 말해보세요.";
+    if(!record.listened.includes(currentSentenceIndex)) {
+      record.listened.push(currentSentenceIndex);
+      saveProgress();
+      updateLessonScreen();
     }
-    return fallback;
+  };
+  window.speechSynthesis.speak(u);
+};
+
+// === Quiz Logic ===
+function normalizeWord(w) { return w.toLowerCase().replace(/[.,?!]/g, ""); }
+function createAutomaticDistractors(eng) {
+  const words = eng.split(/\s+/).map(normalizeWord);
+  const d = [];
+  if (words.includes("do")) d.push("Does", "Did");
+  if (words.includes("does")) d.push("Do", "Did");
+  if (words.includes("did")) d.push("Do", "Does");
+  if (words.includes("don't")) d.push("doesn't", "didn't");
+  if (words.includes("doesn't")) d.push("don't", "didn't");
+  if (words.includes("didn't")) d.push("don't", "doesn't");
+  if (words.includes("like")) d.push("likes", "liked");
+  if (words.includes("likes")) d.push("like", "liked");
+  if (words.includes("liked")) d.push("like", "likes");
+  if (words.includes("want")) d.push("wants", "wanted");
+  if (words.includes("wants")) d.push("want", "wanted");
+  if (words.includes("wanted")) d.push("want", "wants");
+  if (words.includes("i")) d.push("She", "They");
+  if (words.includes("she")) d.push("I", "They");
+  if (words.includes("he")) d.push("She", "They");
+  return d;
+}
+
+function shuffleArray(arr) {
+  const c = [...arr];
+  for(let i=c.length-1; i>0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [c[i], c[j]] = [c[j], c[i]];
   }
+  return c;
+}
 
-  let state = loadState();
-  let currentLessonIndex = getNextIncompleteIndex();
-  if (currentLessonIndex === -1) currentLessonIndex = TOTAL - 1;
-  let currentSentenceIndex = 0;
-  let shuffledBlocks = [];
-  let selectedBlockIds = [];
-  let answerHidden = false;
-  let reviewIndex = 0;
-  let difficultyContinuation = null;
+function createQuiz(sen) {
+  quizKoreanPrompt.textContent = sen.korean;
+  const cw = sen.english.split(/\s+/);
+  const cb = cw.map((w,i) => ({id:`c-${i}`, text:w}));
+  const ad = createAutomaticDistractors(sen.english);
+  const cd = sen.distractors || [];
+  const uniq = [...new Set([...ad, ...cd])];
+  const lowerCw = cw.map(w=>w.toLowerCase());
+  const fd = uniq.filter(d => !lowerCw.includes(d.toLowerCase()));
+  const db = shuffleArray(fd).slice(0,6).map((w,i)=>({id:`d-${i}`, text:w}));
 
-  function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }
+  shuffledBlocks = shuffleArray([...cb, ...db]);
+  selectedBlockIds = [];
+  quizFeedback.textContent = "";
+  quizFeedback.className = "quiz-feedback";
+  renderQuiz();
+}
 
-  function isCompleted(day) {
-    return state.completedDays.includes(day);
-  }
+function renderQuiz() {
+  answerZone.innerHTML = "";
+  wordBank.innerHTML = "";
+  if(selectedBlockIds.length===0) answerZone.innerHTML = "<p class='answer-placeholder'>단어를 순서대로 누르세요.</p>";
 
-  function getNextIncompleteIndex() {
-    return data.lessons.findIndex((lesson) => !isCompleted(lesson.day));
-  }
+  selectedBlockIds.forEach(id => {
+    const b = shuffledBlocks.find(x=>x.id===id);
+    const btn = document.createElement('button');
+    btn.className = "word-block answer-block";
+    btn.textContent = b.text;
+    btn.onclick = () => { selectedBlockIds.splice(selectedBlockIds.indexOf(id), 1); renderQuiz(); };
+    answerZone.appendChild(btn);
+  });
 
-  function isUnlocked(index) {
-    if (index < 0 || index >= TOTAL) return false;
-    if (isCompleted(data.lessons[index].day)) return true;
-    const next = getNextIncompleteIndex();
-    return next === -1 || index === next;
-  }
-
-  function modeForDay(day) {
-    if (day <= 3) return "basic";
-    if (day <= 7) return state.difficulty.stage1 || "basic";
-    return state.difficulty.stage2 || state.difficulty.stage1 || "basic";
-  }
-
-  function getLesson(index = currentLessonIndex) {
-    return data.lessons[index];
-  }
-
-  function getSentences(index = currentLessonIndex) {
-    const lesson = getLesson(index);
-    const mode = modeForDay(lesson.day);
-    if (mode === "advanced" && Array.isArray(lesson.advancedSentences) && lesson.advancedSentences.length === 5) {
-      return lesson.advancedSentences;
+  shuffledBlocks.forEach(b => {
+    if(!selectedBlockIds.includes(b.id)) {
+      const btn = document.createElement('button');
+      btn.className = "word-block";
+      btn.textContent = b.text;
+      btn.onclick = () => { selectedBlockIds.push(b.id); renderQuiz(); };
+      wordBank.appendChild(btn);
     }
-    return lesson.sentences;
+  });
+}
+
+checkAnswerBtn.onclick = () => {
+  const data = getLessonData(currentLessonIndex + 1);
+  const sen = data.sentences[currentSentenceIndex];
+  const record = getLessonRecord(data.day);
+  const ans = selectedBlockIds.map(id => shuffledBlocks.find(x=>x.id===id).text).join(" ");
+
+  if(selectedBlockIds.length===0) {
+    quizFeedback.textContent = "단어를 선택하세요!";
+    quizFeedback.className = "quiz-feedback incorrect";
+    return;
   }
 
-  function sentenceId(day, mode, index) {
-    return `${day}-${mode}-${index}`;
-  }
-
-  function progressKey(day, mode) {
-    return `${day}-${mode}`;
-  }
-
-  function getDayProgress(day, mode) {
-    const key = progressKey(day, mode);
-    if (!state.lessonProgress[key]) state.lessonProgress[key] = { listened: [], solved: [] };
-    return state.lessonProgress[key];
-  }
-
-  function currentContext() {
-    const lesson = getLesson();
-    const mode = modeForDay(lesson.day);
-    const sentences = getSentences();
-    const progress = getDayProgress(lesson.day, mode);
-    return { lesson, mode, sentences, progress };
-  }
-
-  function uniquePush(array, value) {
-    if (!array.includes(value)) array.push(value);
-  }
-
-  function scrollToLesson() {
-    requestAnimationFrame(() => elements.lessonView.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
-
-  function renderDayMenu() {
-    elements.dayMenu.innerHTML = "";
-    const next = getNextIncompleteIndex();
-    data.lessons.forEach((lesson, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "day-button";
-      const dayText = document.createElement("span");
-      dayText.textContent = `${lesson.day}일차`;
-      const stateText = document.createElement("span");
-      stateText.className = "day-state";
-      if (isCompleted(lesson.day)) {
-        button.classList.add("completed");
-        stateText.textContent = "완료";
-      } else if (index === next) {
-        button.classList.add("current");
-        stateText.textContent = "학습 중";
-      } else {
-        button.classList.add("locked");
-        stateText.textContent = "잠김";
-      }
-      if (index === currentLessonIndex) button.classList.add("selected");
-      button.append(dayText, stateText);
-      button.disabled = !isUnlocked(index);
-      if (!button.disabled) button.addEventListener("click", () => selectLesson(index, true));
-      elements.dayMenu.appendChild(button);
-    });
-  }
-
-  function shouldShowReview() {
-    const lesson = getLesson();
-    return lesson.day > 1 && !isCompleted(lesson.day) && !state.reviewDoneDays.includes(lesson.day);
-  }
-
-  function renderReview() {
-    if (!shouldShowReview()) {
-      elements.reviewPanel.classList.add("hidden");
-      elements.lessonBody.classList.remove("hidden");
-      return;
-    }
-    const previousSentences = getSentences(currentLessonIndex - 1);
-    reviewIndex = Math.min(reviewIndex, previousSentences.length - 1);
-    const item = previousSentences[reviewIndex];
-    elements.reviewPanel.classList.remove("hidden");
-    elements.lessonBody.classList.add("hidden");
-    elements.reviewCount.textContent = `복습 ${reviewIndex + 1} / ${previousSentences.length}`;
-    elements.reviewKorean.textContent = item.korean;
-    elements.reviewEnglish.textContent = "";
-    elements.reviewRevealButton.textContent = "영어 확인하기";
-    elements.reviewNextButton.textContent = reviewIndex === previousSentences.length - 1 ? "말했어요 · 복습 완료" : "말했어요 · 다음";
-  }
-
-  function revealReviewAnswer() {
-    const item = getSentences(currentLessonIndex - 1)[reviewIndex];
-    const visible = elements.reviewEnglish.textContent !== "";
-    elements.reviewEnglish.textContent = visible ? "" : item.english;
-    elements.reviewRevealButton.textContent = visible ? "영어 확인하기" : "영어 다시 가리기";
-  }
-
-  function advanceReview() {
-    const count = getSentences(currentLessonIndex - 1).length;
-    if (reviewIndex < count - 1) {
-      reviewIndex += 1;
-      renderReview();
-      return;
-    }
-    uniquePush(state.reviewDoneDays, getLesson().day);
-    saveState();
-    reviewIndex = 0;
-    elements.status.textContent = "어제의 문장 복습을 마쳤습니다. 오늘의 5문장을 시작하세요.";
-    renderReview();
-    updateCompletionArea();
-    scrollToLesson();
-  }
-
-  function renderLesson() {
-    const { lesson, mode, sentences } = currentContext();
-    if (currentSentenceIndex >= sentences.length) currentSentenceIndex = 0;
-    const current = sentences[currentSentenceIndex];
-    elements.dayLabel.textContent = `${lesson.day}일차 / ${TOTAL}일`;
-    elements.lessonTitle.textContent = lesson.title;
-    if (mode === "advanced") {
-      const badge = document.createElement("span");
-      badge.className = "difficulty-badge";
-      badge.textContent = "심화";
-      elements.lessonTitle.appendChild(badge);
-    }
-    elements.lessonFocus.textContent = mode === "advanced" ? "시제·주어·의문사 통합 연습" : lesson.focus;
-    elements.lessonGuide.textContent = mode === "advanced"
-      ? `${lesson.guide} 현재형과 과거형, 질문과 부정, when·where 표현을 함께 구별합니다.`
-      : lesson.guide;
-    elements.mainSentence.textContent = current.english;
-    elements.mainMeaning.textContent = current.korean;
-    answerHidden = lesson.day >= 28;
+  if(ans === sen.english) {
+    quizFeedback.textContent = "🎉 정답입니다!";
+    quizFeedback.className = "quiz-feedback correct";
+    answerHidden = false;
     updateAnswerVisibility();
-    renderSentenceChoices();
-    createQuiz();
-    renderProgress();
-    renderReview();
-    renderDayMenu();
-    updateNavigation();
-    updateCompletionArea();
-  }
 
-  function renderSentenceChoices() {
-    const { lesson, mode, sentences, progress } = currentContext();
-    elements.sentenceChoices.innerHTML = "";
-    sentences.forEach((item, index) => {
-      const id = sentenceId(lesson.day, mode, index);
-      const listened = progress.listened.includes(id);
-      const solved = progress.solved.includes(id);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "sentence-button" + (index === currentSentenceIndex ? " selected" : "");
-      const english = document.createElement("span");
-      english.className = "choice-english";
-      english.textContent = item.english;
-      const korean = document.createElement("span");
-      korean.className = "choice-korean";
-      korean.textContent = item.korean;
-      const stateLine = document.createElement("span");
-      stateLine.className = "choice-state" + (listened && solved ? " done" : "");
-      stateLine.textContent = `듣기 ${listened ? "완료" : "미완료"} · 퀴즈 ${solved ? "완료" : "미완료"}`;
-      button.append(english, korean, stateLine);
-      button.addEventListener("click", () => {
-        if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-        currentSentenceIndex = index;
-        elements.status.textContent = `${index + 1}번 문장을 선택했습니다.`;
-        renderLesson();
-      });
-      elements.sentenceChoices.appendChild(button);
-    });
-  }
-
-  function renderProgress() {
-    const { lesson, mode, sentences, progress } = currentContext();
-    const ids = sentences.map((_, index) => sentenceId(lesson.day, mode, index));
-    const listened = ids.filter((id) => progress.listened.includes(id)).length;
-    const solved = ids.filter((id) => progress.solved.includes(id)).length;
-    elements.listenProgress.textContent = `${listened} / ${sentences.length}`;
-    elements.quizProgress.textContent = `${solved} / ${sentences.length}`;
-  }
-
-  function speakCurrentSentence() {
-    if (!("speechSynthesis" in window)) {
-      elements.status.textContent = "이 브라우저에서는 음성 재생을 사용할 수 없습니다.";
-      return;
+    if(!record.solved.includes(currentSentenceIndex)) {
+      record.solved.push(currentSentenceIndex);
+      addStars(1); // Gamification!
+      saveProgress();
+      updateLessonScreen();
     }
-    const { lesson, mode, sentences, progress } = currentContext();
-    const id = sentenceId(lesson.day, mode, currentSentenceIndex);
-    window.speechSynthesis.cancel();
-    const speech = new SpeechSynthesisUtterance(sentences[currentSentenceIndex].english);
-    speech.lang = "en-US";
-    speech.rate = 0.72;
-    speech.onstart = () => { elements.status.textContent = "문장을 끝까지 듣고 있습니다."; };
-    speech.onend = () => {
-      uniquePush(progress.listened, id);
-      saveState();
-      elements.status.textContent = "듣기 완료로 기록했습니다. 소리 내어 따라 말해 보세요.";
-      renderSentenceChoices();
-      renderProgress();
-      updateCompletionArea();
-    };
-    speech.onerror = (event) => {
-      if (event.error !== "canceled" && event.error !== "interrupted") {
-        elements.status.textContent = "음성을 끝까지 재생하지 못했습니다. 다시 시도하세요.";
-      }
-    };
-    window.speechSynthesis.speak(speech);
+  } else {
+    quizFeedback.textContent = "오답입니다. 다시 시도해보세요.";
+    quizFeedback.className = "quiz-feedback incorrect";
   }
+};
 
-  function normalizeWord(word) {
-    return word.toLowerCase().replace(/[.,?!]/g, "");
-  }
+resetQuizBtn.onclick = () => {
+  createQuiz(getLessonData(currentLessonIndex + 1).sentences[currentSentenceIndex]);
+};
 
-  function automaticDistractors(sentence) {
-    const words = sentence.split(/\s+/).map(normalizeWord);
-    const result = [];
-    const add = (...items) => result.push(...items);
-    if (words.includes("do")) add("Does", "Did");
-    if (words.includes("does")) add("Do", "Did");
-    if (words.includes("did")) add("Do", "Does");
-    if (words.includes("don't")) add("doesn't", "didn't");
-    if (words.includes("doesn't")) add("don't", "didn't");
-    if (words.includes("didn't")) add("don't", "doesn't");
-    if (words.includes("like")) add("likes", "liked");
-    if (words.includes("likes")) add("like", "liked");
-    if (words.includes("liked")) add("like", "likes");
-    if (words.includes("want")) add("wants", "wanted");
-    if (words.includes("wants")) add("want", "wanted");
-    if (words.includes("wanted")) add("want", "wants");
-    if (words.includes("i")) add("She", "They");
-    if (words.includes("she")) add("I", "They");
-    if (words.includes("he")) add("She", "They");
-    if (words.includes("we")) add("I", "She");
-    if (words.includes("they")) add("She", "I");
-    if (words.includes("what")) add("When", "Where");
-    if (words.includes("when")) add("What", "Where");
-    if (words.includes("where")) add("What", "When");
-    if (words.includes("always")) add("usually", "never");
-    if (words.includes("usually")) add("always", "sometimes");
-    if (words.includes("often")) add("always", "rarely");
-    if (words.includes("never")) add("always", "sometimes");
-    return result;
-  }
+// === Visibility ===
+function updateAnswerVisibility() {
+  lessonCard.classList.toggle("answer-hidden", answerHidden);
+  toggleAnswerBtn.textContent = answerHidden ? "영어 정답 보기" : "영어 문장 가리기";
+}
+toggleAnswerBtn.onclick = () => {
+  answerHidden = !answerHidden;
+  updateAnswerVisibility();
+};
 
-  function shuffle(items) {
-    const copy = [...items];
-    for (let index = copy.length - 1; index > 0; index -= 1) {
-      const random = Math.floor(Math.random() * (index + 1));
-      [copy[index], copy[random]] = [copy[random], copy[index]];
-    }
-    return copy;
-  }
+// === Completion ===
+function updateCompletionArea(data, record) {
+  const totalSentences = data.sentences.length;
+  const missingListen = totalSentences - record.listened.length;
+  const missingQuiz = totalSentences - record.solved.length;
+  const completed = progress.completedDays.includes(data.day);
 
-  function createQuiz() {
-    const current = getSentences()[currentSentenceIndex];
-    elements.quizKoreanPrompt.textContent = current.korean;
-    const correctWords = current.english.split(/\s+/);
-    const correct = correctWords.map((text, index) => ({ id: `correct-${index}`, text }));
-    const correctNormalized = new Set(correctWords.map(normalizeWord));
-    const custom = Array.isArray(current.distractors) ? current.distractors : [];
-    const distractorWords = [...new Set([...automaticDistractors(current.english), ...custom])]
-      .filter((word) => !correctNormalized.has(normalizeWord(word)));
-    const distractors = shuffle(distractorWords).slice(0, 8)
-      .map((text, index) => ({ id: `distractor-${index}`, text }));
-    shuffledBlocks = shuffle([...correct, ...distractors]);
-    selectedBlockIds = [];
-    elements.quizFeedback.textContent = "";
-    elements.quizFeedback.className = "quiz-feedback";
-    renderQuiz();
-  }
-
-  function renderQuiz() {
-    elements.answerZone.innerHTML = "";
-    elements.wordBank.innerHTML = "";
-    if (selectedBlockIds.length === 0) {
-      const placeholder = document.createElement("p");
-      placeholder.className = "answer-placeholder";
-      placeholder.textContent = "필요한 블록을 문장 순서대로 누르세요.";
-      elements.answerZone.appendChild(placeholder);
-    }
-    selectedBlockIds.forEach((id) => {
-      const block = shuffledBlocks.find((item) => item.id === id);
-      if (block) elements.answerZone.appendChild(makeBlock(block, true));
-    });
-    shuffledBlocks.forEach((block) => {
-      if (!selectedBlockIds.includes(block.id)) elements.wordBank.appendChild(makeBlock(block, false));
-    });
-  }
-
-  function makeBlock(block, selected) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "word-block" + (selected ? " answer-block" : "");
-    button.textContent = block.text;
-    button.addEventListener("click", () => {
-      if (selected) selectedBlockIds = selectedBlockIds.filter((id) => id !== block.id);
-      else selectedBlockIds.push(block.id);
-      elements.quizFeedback.textContent = "";
-      elements.quizFeedback.className = "quiz-feedback";
-      renderQuiz();
-    });
-    return button;
-  }
-
-  function userAnswer() {
-    return selectedBlockIds.map((id) => shuffledBlocks.find((item) => item.id === id)?.text || "").join(" ");
-  }
-
-  function checkAnswer() {
-    const { lesson, mode, sentences, progress } = currentContext();
-    if (userAnswer() === sentences[currentSentenceIndex].english) {
-      const id = sentenceId(lesson.day, mode, currentSentenceIndex);
-      uniquePush(progress.solved, id);
-      saveState();
-      elements.quizFeedback.textContent = "정답입니다. 헷갈리는 블록도 잘 구별했습니다.";
-      elements.quizFeedback.className = "quiz-feedback correct";
-      answerHidden = false;
-      updateAnswerVisibility();
-      renderSentenceChoices();
-      renderProgress();
-      updateCompletionArea();
+  if(completed) {
+    completionReqs.innerHTML = "✅ 이미 완료된 학습입니다. 자유롭게 복습하세요.";
+    completeLessonBtn.disabled = true;
+    completeLessonBtn.textContent = "학습 완료됨";
+    completionMessage.textContent = "";
+  } else {
+    if(missingListen === 0 && missingQuiz === 0) {
+      completionReqs.innerHTML = "🎉 모든 조건을 달성했습니다! 아래 버튼을 누르세요.";
+      completeLessonBtn.disabled = false;
+      completeLessonBtn.textContent = "학습 완료하기 🚀";
     } else {
-      elements.quizFeedback.textContent = "아직 정확하지 않습니다. 주어, 시제, 조동사와 동사 형태를 다시 살펴보세요.";
-      elements.quizFeedback.className = "quiz-feedback incorrect";
+      completionReqs.innerHTML = `아직 완료할 수 없습니다.<br> 남은 듣기: ${missingListen}개 | 남은 퀴즈: ${missingQuiz}개`;
+      completeLessonBtn.disabled = true;
+      completeLessonBtn.textContent = "조건을 모두 달성해주세요";
     }
   }
+}
 
-  function updateAnswerVisibility() {
-    elements.lessonView.classList.toggle("answer-hidden", answerHidden);
-    elements.toggleAnswerButton.textContent = answerHidden ? "영어 정답 보기" : "영어 문장 가리기";
-  }
+completeLessonBtn.onclick = () => {
+  const day = currentLessonIndex + 1;
+  if(!progress.completedDays.includes(day)) {
+    progress.completedDays.push(day);
+    addStars(10); // Bonus stars
+    saveProgress();
+    showConfetti();
 
-  function completionStatus() {
-    const { lesson, mode, sentences, progress } = currentContext();
-    const ids = sentences.map((_, index) => sentenceId(lesson.day, mode, index));
-    return {
-      missingListen: ids.filter((id) => !progress.listened.includes(id)).length,
-      missingQuiz: ids.filter((id) => !progress.solved.includes(id)).length,
-      reviewMissing: shouldShowReview()
-    };
-  }
-
-  function updateCompletionArea() {
-    const lesson = getLesson();
-    if (isCompleted(lesson.day)) {
-      elements.completeButton.disabled = true;
-      elements.completeButton.textContent = `${lesson.day}일차 학습 완료됨`;
-      elements.completionMessage.textContent = "완료 기록이 저장되어 있습니다. 다시 듣고 풀어도 완료 상태는 유지됩니다.";
-      return;
-    }
-    const missing = completionStatus();
-    const ready = !missing.reviewMissing && missing.missingListen === 0 && missing.missingQuiz === 0;
-    elements.completeButton.disabled = !ready;
-    elements.completeButton.textContent = ready ? `${lesson.day}일차 학습 완료하기` : "아직 학습을 완료할 수 없습니다";
-    const reasons = [];
-    if (missing.reviewMissing) reasons.push("어제의 문장 복습을 먼저 마쳐야 합니다.");
-    if (missing.missingListen) reasons.push(`끝까지 듣지 않은 문장: ${missing.missingListen}개`);
-    if (missing.missingQuiz) reasons.push(`맞히지 않은 블록 퀴즈: ${missing.missingQuiz}개`);
-    elements.completionMessage.textContent = ready
-      ? "5개 문장을 모두 듣고 5개 퀴즈를 모두 맞혔습니다."
-      : reasons.join("\n");
-  }
-
-  function updateNavigation() {
-    elements.previousButton.disabled = currentLessonIndex === 0 || !isUnlocked(currentLessonIndex - 1);
-    elements.nextButton.disabled = currentLessonIndex >= TOTAL - 1 || !isUnlocked(currentLessonIndex + 1);
-  }
-
-  function selectLesson(index, shouldScroll = false) {
-    if (!isUnlocked(index)) return;
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    currentLessonIndex = index;
-    currentSentenceIndex = 0;
-    reviewIndex = 0;
-    renderLesson();
-    elements.status.textContent = isCompleted(getLesson().day)
-      ? `${getLesson().day}일차는 완료한 학습입니다. 자유롭게 복습하세요.`
-      : `${getLesson().day}일차 학습을 시작합니다.`;
-    if (shouldScroll) scrollToLesson();
-  }
-
-  function showDifficultyChoice(stage, continuation) {
-    difficultyContinuation = continuation;
-    const current = stage === "stage2" ? (state.difficulty.stage1 || "basic") : "basic";
-    if (stage === "stage1") {
-      elements.difficultyTitle.textContent = "4일차부터 더 복잡한 문장을 배워 볼까요?";
-      elements.difficultyCopy.textContent = "4~7일차는 선택한 난이도로 비슷한 수준을 유지합니다.";
-    } else if (current === "advanced") {
-      elements.difficultyTitle.textContent = "8일차부터 현재 심화 난이도를 계속할까요?";
-      elements.difficultyCopy.textContent = "기본 난이도로 돌아가거나, 현재의 시제·의문사 통합 수준을 유지할 수 있습니다.";
-    } else {
-      elements.difficultyTitle.textContent = "8일차부터 더 복잡한 문장을 학습할까요?";
-      elements.difficultyCopy.textContent = "현재 난이도를 유지하거나 심화 난이도로 바꿀 수 있습니다.";
-    }
-    elements.basicExample.textContent = data.basicExample;
-    elements.advancedExample.textContent = data.advancedExample;
-    elements.difficultyBasicButton.textContent = stage === "stage2" && current === "advanced" ? "기본 난이도로 변경" : "아니요, 현재 난이도 유지";
-    elements.difficultyAdvancedButton.textContent = stage === "stage2" && current === "advanced" ? "네, 심화 난이도 유지" : "네, 심화 난이도로 학습";
-    elements.difficultyModal.classList.remove("hidden");
-    elements.difficultyModal.dataset.stage = stage;
-  }
-
-  function chooseDifficulty(mode) {
-    const stage = elements.difficultyModal.dataset.stage;
-    state.difficulty[stage] = mode;
-    saveState();
-    elements.difficultyModal.classList.add("hidden");
-    const continuation = difficultyContinuation;
-    difficultyContinuation = null;
-    if (typeof continuation === "function") continuation();
-    else renderLesson();
-  }
-
-  function completeLesson() {
-    const lesson = getLesson();
-    const missing = completionStatus();
-    if (missing.reviewMissing || missing.missingListen || missing.missingQuiz) {
-      updateCompletionArea();
-      return;
-    }
-    uniquePush(state.completedDays, lesson.day);
-    state.completedDays.sort((a, b) => a - b);
-    saveState();
-
-    if (lesson.day === TOTAL) {
-      if (data.nextCourseUrl) {
-        elements.status.textContent = "이번 달 학습을 완료했습니다. 다음 달 학습으로 이동합니다.";
-        setTimeout(() => { window.location.href = data.nextCourseUrl; }, 900);
+    setTimeout(() => {
+      if(day === 30) {
+        if(COURSE_ID === "month1") {
+          alert("1개월차를 모두 완료했습니다! 2개월차로 이동합니다.");
+          window.location.href = "month2.html";
+        } else {
+          alert("2개월차 학습을 모두 완료했습니다! 훌륭합니다!");
+          currentLessonIndex = 29;
+          startLessonFlow();
+        }
       } else {
-        renderLesson();
-        elements.status.textContent = "2개월차 30일 학습을 모두 완료했습니다.";
+        currentLessonIndex = day; // Next day
+        startLessonFlow();
       }
-      return;
-    }
-
-    const goNext = () => selectLesson(currentLessonIndex + 1, true);
-    if (lesson.day === 3 && !state.difficulty.stage1) {
-      renderDayMenu();
-      showDifficultyChoice("stage1", goNext);
-      return;
-    }
-    if (lesson.day === 7 && !state.difficulty.stage2) {
-      renderDayMenu();
-      showDifficultyChoice("stage2", goNext);
-      return;
-    }
-    goNext();
+    }, 2500);
   }
+};
 
-  function checkPendingDifficulty() {
-    const day = getLesson().day;
-    if (!isCompleted(day) && day >= 4 && day <= 7 && !state.difficulty.stage1) {
-      showDifficultyChoice("stage1", () => renderLesson());
-    } else if (!isCompleted(day) && day >= 8 && !state.difficulty.stage2) {
-      showDifficultyChoice("stage2", () => renderLesson());
-    }
-  }
+// Navigation
+function updateNavigationButtons() {
+  prevBtn.disabled = currentLessonIndex === 0;
+  nextBtn.disabled = !progress.completedDays.includes(currentLessonIndex + 1) && (currentLessonIndex + 1 > getStartingLessonIndex());
+}
 
-  elements.reviewRevealButton.addEventListener("click", revealReviewAnswer);
-  elements.reviewNextButton.addEventListener("click", advanceReview);
-  elements.listenButton.addEventListener("click", speakCurrentSentence);
-  elements.toggleAnswerButton.addEventListener("click", () => { answerHidden = !answerHidden; updateAnswerVisibility(); });
-  elements.resetQuizButton.addEventListener("click", createQuiz);
-  elements.checkAnswerButton.addEventListener("click", checkAnswer);
-  elements.completeButton.addEventListener("click", completeLesson);
-  elements.previousButton.addEventListener("click", () => selectLesson(currentLessonIndex - 1, true));
-  elements.nextButton.addEventListener("click", () => selectLesson(currentLessonIndex + 1, true));
-  elements.difficultyBasicButton.addEventListener("click", () => chooseDifficulty("basic"));
-  elements.difficultyAdvancedButton.addEventListener("click", () => chooseDifficulty("advanced"));
+prevBtn.onclick = () => { currentLessonIndex--; startLessonFlow(); };
+nextBtn.onclick = () => { currentLessonIndex++; startLessonFlow(); };
 
-  renderLesson();
-  elements.status.textContent = isCompleted(getLesson().day)
-    ? "모든 학습을 완료했습니다. 원하는 일차를 선택해 복습하세요."
-    : `${getLesson().day}일차 학습을 이어서 진행합니다.`;
-  checkPendingDifficulty();
-})();
+// Boot
+initApp();
