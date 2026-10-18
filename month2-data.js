@@ -1,3 +1,4 @@
+const COURSE_ID = "month2";
 window.COURSE_DATA = {
   "courseId": "month2",
   "courseName": "2개월차",
