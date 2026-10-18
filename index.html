@@ -11,33 +11,34 @@
   <meta name="apple-mobile-web-app-title" content="우리 집 영어">
 </head>
 <body>
-  <div id="confetti-container"></div>
+  <div id="confetti-container" aria-hidden="true"></div>
 
   <main class="app">
     <header class="app-header">
       <div class="header-top">
-        <h1 class="app-title">🏡 우리 집 영어 패턴</h1>
-        <div class="scoreboard">
+        <h1 class="app-title">🏡 우리 집 영어 패턴 · 1개월차</h1>
+        <div class="scoreboard" aria-label="획득한 별 포인트">
           <span class="star-icon">⭐</span>
           <span id="star-count">0</span>
         </div>
       </div>
       <p class="app-description">
-        I like 패턴을 30일 동안 확장하고 변형하며 학습합니다.
+        I like 패턴을 30일 동안 확장하고 변형하며 재미있게 배워요!
       </p>
       <div class="nav-links">
-        <a href="month2.html" class="nav-btn">➡️ 2개월차 (I want) 학습 가기</a>
+        <a href="month2.html" class="nav-btn">➡️ 2개월차 (I want) 학습으로 이동하기</a>
       </div>
     </header>
 
     <nav id="day-menu" class="day-menu" aria-label="학습 일차 선택"></nav>
 
     <!-- 전날 복습 카드 영역 -->
-    <section id="review-card" class="review-card" style="display: none;">
+    <section id="review-card" class="review-card" style="display: none;" aria-live="polite">
       <div class="review-header">
         <span class="review-badge">💡 어제의 문장 복습</span>
-        <span id="review-progress-text" class="review-progress-text">1 / 5</span>
+        <span id="review-progress-text" class="review-progress-text">복습 1 / 5</span>
       </div>
+      <p class="review-guide">한국어 뜻을 보고 영어로 먼저 말해 보세요! 다 말했으면 다음 카드로 넘어가요.</p>
       <div class="review-content">
         <p id="review-korean" class="review-korean"></p>
         <div id="review-english-container" class="review-english-container hidden">
@@ -45,19 +46,19 @@
         </div>
       </div>
       <div class="review-buttons">
-        <button id="toggle-review-english-btn" class="action-btn outline-btn" type="button">영어 정답 보기</button>
+        <button id="toggle-review-english-btn" class="action-btn outline-btn" type="button">영어 확인하기 👀</button>
         <button id="next-review-btn" class="action-btn primary-btn" type="button">말했어요! 다음 ➡️</button>
       </div>
     </section>
 
     <!-- 난이도 선택 영역 -->
-    <section id="difficulty-card" class="lesson-card difficulty-card" style="display: none;">
+    <section id="difficulty-card" class="lesson-card difficulty-card" style="display: none;" aria-live="polite">
       <h2 id="diff-title" class="lesson-title">난이도 선택</h2>
       <p id="diff-desc" class="lesson-guide"></p>
       <div id="diff-examples" class="diff-examples"></div>
       <div class="difficulty-buttons">
-        <button id="btn-diff-basic" class="action-btn outline-btn" type="button">기본 난이도</button>
-        <button id="btn-diff-advanced" class="action-btn primary-btn" type="button">심화 난이도 🔥</button>
+        <button id="btn-diff-basic" class="action-btn outline-btn" type="button">아니요, 현재 난이도 유지</button>
+        <button id="btn-diff-advanced" class="action-btn primary-btn" type="button">네, 심화 난이도로 학습 🔥</button>
       </div>
     </section>
 
@@ -65,7 +66,7 @@
     <section id="lesson-card" class="lesson-card">
       <div class="lesson-header">
         <p id="day-label" class="day-label"></p>
-        <span id="diff-badge" class="diff-badge" style="display:none;">심화 🔥</span>
+        <span id="diff-badge" class="diff-badge" style="display: none;">심화 🔥</span>
       </div>
 
       <h2 id="lesson-title" class="lesson-title"></h2>
@@ -73,10 +74,14 @@
       <p id="lesson-guide" class="lesson-guide"></p>
 
       <div class="daily-progress">
+        <div class="progress-stats">
+          <span id="listen-progress" class="stat-pill">🔊 듣기: 0 / 5</span>
+          <span id="quiz-progress" class="stat-pill">🧩 퀴즈: 0 / 5</span>
+        </div>
         <div class="progress-bar-bg">
           <div id="daily-progress-bar" class="progress-bar-fill"></div>
         </div>
-        <p id="daily-progress-text" class="progress-text">진행도: 0 / 5</p>
+        <p id="daily-progress-text" class="progress-text">오늘의 진행도: 0 / 10</p>
       </div>
 
       <div class="sentence-box">
@@ -85,27 +90,27 @@
         <p id="main-meaning" class="main-meaning"></p>
       </div>
 
-      <h3 class="section-title">👇 연습할 문장을 선택하세요</h3>
+      <h3 class="section-title">👇 연습할 문장을 선택하세요 (총 5문장)</h3>
       <div id="sentence-choices" class="sentence-choices"></div>
 
       <button id="listen-button" class="listen-button" type="button">
-        🔊 선택한 문장 듣기
+        🔊 선택한 문장 끝까지 듣기
       </button>
       <p id="status" class="status" aria-live="polite"></p>
 
       <section class="quiz-card">
         <h3 class="quiz-title">🧩 단어 블록 조립 퀴즈</h3>
-        <p class="quiz-guide">한국어 문장을 보고 영어 블록을 순서대로 누르세요.</p>
+        <p class="quiz-guide">한국어 문장을 보고 알맞은 영어 블록만 순서대로 누르세요. (헷갈리는 함정 블록은 남겨두세요!)</p>
 
         <div class="quiz-korean-box">
           <span class="quiz-korean-label">📝 한국어 문제</span>
           <p id="quiz-korean-prompt" class="quiz-korean-prompt"></p>
         </div>
 
-        <p class="quiz-label">내가 만든 문장</p>
+        <p class="quiz-label">내가 만든 문장 (누르면 다시 내려갑니다)</p>
         <div id="answer-zone" class="answer-zone"></div>
 
-        <p class="quiz-label">사용할 단어</p>
+        <p class="quiz-label">사용할 단어 블록</p>
         <div id="word-bank" class="word-bank"></div>
 
         <div class="quiz-buttons">
@@ -119,7 +124,7 @@
       <section class="completion-panel">
         <div id="completion-reqs" class="completion-reqs"></div>
         <button id="complete-lesson-button" class="complete-lesson-button" type="button">
-          🎉 학습 완료하기
+          🎉 오늘 학습 완료하기
         </button>
         <p id="completion-message" class="completion-message" aria-live="polite"></p>
       </section>
